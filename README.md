@@ -1,188 +1,152 @@
-MailCheck — Email Verification Service
+# MailCheck: Email Verification Service
 
-Verify email addresses before sending campaigns. MailCheck checks email syntax, mail server (MX) records, disposable domains, role-based inboxes, and common domain typos—without sending any emails.
+![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=nextdotjs)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-29%20passing-6E9F18?logo=vitest&logoColor=white)
 
-🔗 Links
+Check whether an email address is worth sending to **before** you send a campaign. MailCheck validates syntax, looks up mail server (MX) records, and flags disposable domains, role-based inboxes and likely typos, all without sending a single email.
 
-* 🚀 Live Demo: https://mailcheck-mu.vercel.app/
-* 📖 API Specification: https://mailcheck-mu.vercel.app/api/openapi
-* 💻 Source Code: https://github.com/akritiy15/mailcheck
+[Live Demo](https://mailcheck-mu.vercel.app/) · [API Specification](https://mailcheck-mu.vercel.app/api/openapi) · [Source Code](https://github.com/akritiy15/mailcheck)
 
-⸻
+> **Scope note:** MailCheck uses syntax, DNS and heuristic checks. It does not send emails or probe mailboxes over SMTP, so a "deliverable" verdict is a strong indicator, not proof the inbox exists. See [Limitations](#limitations).
 
-✨ Features
+## Why I built it
 
-* Single Email Verification: Analyze an individual email address.
-* Bulk Verification: Process up to 100 email addresses in one request.
-* Syntax Validation: Check email formatting, length limits, domain labels, and top-level domains.
-* MX Record Lookup: Check whether a domain has mail servers configured using DNS lookups.
-* Disposable Email Detection: Identify addresses from known disposable email providers.
-* Role-Based Address Detection: Flag shared inboxes such as info@, support@, and noreply@.
-* Free Email Provider Detection: Identify common providers such as Gmail, Yahoo, and Outlook.
-* Typo Suggestions: Suggest likely domain corrections using edit-distance matching.
-* Verification Scoring: Return a score from 0–100 with a verdict of deliverable, risky, or undeliverable.
-* CSV Export: Download bulk verification results for further analysis.
-* Rate Limiting: Limit requests to help prevent API abuse.
-* Optional Verification History: Store verification history in MySQL when configured.
+Cold-outreach tools lose sender reputation when campaigns hit invalid or risky addresses. I built MailCheck as a compact, privacy-conscious example of the kind of service that sits in front of an outbound-email platform: a typed API, deterministic and testable verification logic, and a small UI on top.
 
-🛠️ Tech Stack
+## What it does
 
-Layer	Technologies
-Frontend	Next.js 14, React, TypeScript
-Styling	Tailwind CSS
-API	Next.js App Router and Route Handlers
-Validation	Zod
-Database	MySQL with mysql2
-Testing	Vitest
-API Documentation	OpenAPI 3.0
-Deployment	Vercel
-Containerization	Docker, Docker Compose
+- **Single and bulk verification:** one address at a time, or up to 100 per request
+- **Syntax validation:** format, length limits, domain labels and top-level domains
+- **MX record lookup:** confirms the domain has mail servers configured via DNS
+- **Disposable email detection:** flags known throwaway providers
+- **Role-based address detection:** flags shared inboxes like `info@`, `support@` and `noreply@`
+- **Free provider detection:** identifies Gmail, Yahoo, Outlook and similar
+- **Typo suggestions:** proposes likely domain corrections using edit-distance matching (for example `gmial.com` → `gmail.com`)
+- **Scoring:** returns a 0-100 score and a verdict of `deliverable`, `risky` or `undeliverable`, with the reason behind it
+- **CSV export:** download bulk results for further analysis
+- **Rate limiting:** separate limits for single and bulk endpoints
+- **Optional history:** stores verification history in MySQL when configured
 
-⚙️ How It Works
+## Tech stack
 
-1. Enter one email address or provide a list of addresses.
-2. MailCheck validates syntax and examines the email domain.
-3. DNS MX records are queried to check mail-server configuration.
-4. The service checks for disposable domains, role-based inboxes, common providers, and possible typos.
-5. Each address receives a score, a verdict, and an explanation of the checks performed.
-6. Bulk results can be exported as a CSV file.
+| Layer | Technologies |
+| --- | --- |
+| Frontend | Next.js 14, React, TypeScript, Tailwind CSS |
+| API | Next.js App Router route handlers |
+| Validation | Zod |
+| Database (optional) | MySQL with `mysql2` |
+| Testing | Vitest |
+| API docs | OpenAPI 3.0 |
+| Deployment | Vercel; Docker and Docker Compose for local/containerized runs |
 
-Privacy-conscious by design: MailCheck does not send emails or attempt SMTP mailbox probing. A deliverable verdict is an indicator based on syntax and domain-level checks, not proof that a particular mailbox exists.
+## How it works
 
-🧪 Testing
+1. You submit one address or a list.
+2. MailCheck validates the syntax and extracts the domain.
+3. It queries DNS for MX records.
+4. It checks the domain and local part against disposable lists, role-based names, common providers and typo candidates.
+5. Each address gets a score, a verdict and an explanation of the checks that produced it.
+6. Bulk results can be exported as CSV.
 
-The project includes 29 automated tests covering verification logic and rate limiting.
+## Engineering highlights
 
-Run the test suite:
+- **Dependency injection for DNS.** The MX resolver can be swapped for a controlled implementation, so tests are deterministic and don't depend on live DNS or a database.
+- **Bounded concurrency.** Bulk verification runs with up to 10 workers, which keeps it fast without flooding DNS.
+- **Deduplication and caching.** Duplicate inputs are removed, and MX lookups are cached per domain while a batch is processed.
+- **Graceful degradation.** The app works with no database. If MySQL is configured and fails, verification still succeeds; only history is skipped.
+- **Request validation.** Payloads are validated with Zod before any work happens.
+- **Consistent API behavior.** Structured JSON responses with clear validation and rate-limit errors.
 
-npm test
+## Design decisions and trade-offs
 
-Run TypeScript type checking:
+- **No SMTP probing.** Connecting to mail servers to test mailboxes is unreliable (many servers accept everything or block probes) and can hurt IP reputation. Staying at the DNS and heuristic level keeps the service safe and privacy-friendly, at the cost of not confirming individual mailboxes.
+- **Optional database.** History is a nice-to-have, so the core service has no required infrastructure. That makes it trivial to run and deploy.
+- **In-memory rate limiting.** Simple and fine for a single-instance demo. It isn't shared across instances, which is why Redis-based limiting is on the roadmap.
+- **DNS failures return `risky`, not `undeliverable`.** A temporary lookup failure isn't proof an address is bad, so the verdict reflects that uncertainty.
 
-npm run typecheck
+## API
 
-Create a production build:
+The full OpenAPI spec is at [`/api/openapi`](https://mailcheck-mu.vercel.app/api/openapi).
 
-npm run build
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/api/verify` | Verify one email |
+| POST | `/api/verify/bulk` | Verify up to 100 emails |
+| GET | `/api/history?limit=20` | Recent history (when the database is configured) |
 
-Tests use controlled DNS behavior where appropriate, so the core verification logic can be tested without depending on live DNS or a database.
+**Verify one email**
 
-🚀 Run Locally
+```bash
+curl -X POST https://mailcheck-mu.vercel.app/api/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"info@acme.com"}'
+```
 
-Prerequisites
+The response includes the address, verdict, score, reason, the result of each check, MX hosts when available, and a typo suggestion if one applies.
 
-* Node.js 18 or later
-* npm
+**Verify multiple emails**
 
-Installation
+```bash
+curl -X POST https://mailcheck-mu.vercel.app/api/verify/bulk \
+  -H 'Content-Type: application/json' \
+  -d '{"emails":["alice@gmail.com","support@example.com","not-an-email"]}'
+```
 
-Clone the repository:
+The response includes a summary count of deliverable, risky and undeliverable addresses plus the individual results.
 
+## Run locally
+
+Requirements: Node.js 18+ and npm.
+
+```bash
 git clone https://github.com/akritiy15/mailcheck.git
 cd mailcheck
-
-Install dependencies:
-
 npm install
+npm run dev        # http://localhost:3000
+```
 
-Start the development server:
+The app works without a database.
 
-npm run dev
+**Enable verification history (optional)**
 
-Open:
-
-http://localhost:3000
-
-The application works without a database. MySQL is optional and is used for verification history.
-
-Configure MySQL (Optional)
-
-Copy the example environment file:
-
+```bash
 cp .env.example .env.local
+# set DATABASE_URL to your MySQL connection string
+```
 
-Configure DATABASE_URL in .env.local with your MySQL connection string if you want to enable verification history.
+Never commit `.env.local` or database credentials.
 
-Do not commit .env.local or database credentials to GitHub.
+**Run with Docker**
 
-Run with Docker
+```bash
+docker compose up --build   # http://localhost:3000
+```
 
-If Docker is installed and running:
+## Tests
 
-docker compose up --build
+```bash
+npm test             # verification logic and rate limiting
+npm run typecheck    # TypeScript type checking
+npm run build        # production build
+```
 
-Then open:
+Tests use a controlled DNS resolver, so the core logic is verified without network or database access.
 
-http://localhost:3000
+## Limitations
 
-📡 API Reference
+- MailCheck evaluates syntax, domain configuration and heuristics. It does not confirm that a specific mailbox exists or that a message will reach it.
+- DNS failures may produce a `risky` result rather than a definitive verdict.
+- Rate limiting uses in-memory state and is not shared across multiple server instances.
 
-The OpenAPI specification is available at:
+## What I'd add next
 
-https://mailcheck-mu.vercel.app/api/openapi
+- A larger, regularly updated disposable-domain list
+- Catch-all domain detection
+- Distributed rate limiting with Redis
+- Richer verification history and domain analytics
+- Queued verification for very large batches
 
-Verify One Email
+---
 
-POST /api/verify
-
-Example request:
-
-{
-  "email": "info@acme.com"
-}
-
-The response includes the email address, verdict, score, reason, individual check results, MX hosts when available, and any domain typo suggestion.
-
-Verify Multiple Emails
-
-POST /api/verify/bulk
-
-Example request:
-
-{
-  "emails": [
-    "alice@gmail.com",
-    "support@example.com",
-    "not-an-email"
-  ]
-}
-
-The response includes a summary of deliverable, risky, and undeliverable addresses, along with the individual results.
-
-The bulk endpoint accepts up to 100 email addresses per request.
-
-Retrieve Verification History
-
-GET /api/history?limit=20
-
-Returns recent verification history when database storage is configured. Otherwise, the response indicates that history is disabled.
-
-🏗️ Engineering Highlights
-
-* Dependency injection: The MX resolver can be replaced with a controlled implementation for deterministic tests.
-* Bounded concurrency: Bulk verification uses up to 10 workers.
-* Deduplication and caching: Duplicate inputs are removed, and MX lookups are cached per domain during processing.
-* Rate limiting: Separate limits apply to single and bulk verification requests.
-* Graceful degradation: Database failures do not prevent email verification, and history remains optional.
-* Input validation: Request payloads are validated before processing.
-* Consistent API responses: Endpoints return structured JSON responses and appropriate validation and rate-limit errors.
-
-⚠️ Limitations
-
-MailCheck evaluates email syntax, domain configuration, and heuristics. It does not send emails or establish SMTP connections to verify individual mailboxes.
-
-A deliverable result does not guarantee that the specific inbox exists or that a message will reach it. DNS failures may also produce a risky result rather than a definitive verdict.
-
-The rate limiter uses in-memory state, which is suitable for a compact demonstration but is not shared across multiple server instances.
-
-🔮 Future Improvements
-
-* Expand and maintain the disposable-domain list.
-* Add catch-all domain detection.
-* Introduce distributed rate limiting with Redis.
-* Add richer verification history and domain analytics.
-* Explore queued verification workflows for larger batches.
-
-⸻
-
-Built with Next.js, TypeScript, and MySQL.
+Built with Next.js, TypeScript and MySQL.
